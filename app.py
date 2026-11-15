@@ -1,5 +1,6 @@
 import streamlit as st
 import mysql.connector
+from mysql.connector import pooling
 import pandas as pd
 import hashlib
 import os
@@ -21,15 +22,17 @@ st.set_page_config(
 
 try:
     DB_CONFIG = {
-    "host": st.secrets["mysql"]["host"],
-    "port": int(st.secrets["mysql"]["port"]),
-    "user": st.secrets["mysql"]["user"],
-    "password": st.secrets["mysql"]["password"],
-    "database": st.secrets["mysql"]["database"]
-}
+        "host": st.secrets["mysql"]["host"],
+        "port": int(st.secrets["mysql"]["port"]),
+        "user": st.secrets["mysql"]["user"],
+        "password": st.secrets["mysql"]["password"],
+        "database": st.secrets["mysql"]["database"]
+    }
+
 except Exception:
     DB_CONFIG = {
         "host": os.getenv("DB_HOST", "localhost"),
+        "port": int(os.getenv("DB_PORT", "3306")),
         "user": os.getenv("DB_USER", "root"),
         "password": os.getenv("DB_PASSWORD", "YOUR_MYSQL_PASSWORD"),
         "database": os.getenv("DB_NAME", "vehicle_rental_system")
@@ -37,6 +40,7 @@ except Exception:
 
 try:
     OWNER_REGISTRATION_KEY = st.secrets["owner"]["registration_key"]
+
 except Exception:
     OWNER_REGISTRATION_KEY = os.getenv(
         "OWNER_REGISTRATION_KEY",
@@ -44,14 +48,29 @@ except Exception:
     )
 
 # =========================================================
+# DATABASE CONNECTION POOL
+# =========================================================
+
+@st.cache_resource
+def get_connection_pool():
+    return pooling.MySQLConnectionPool(
+        pool_name="vehicle_rental_pool",
+        pool_size=2,
+        pool_reset_session=True,
+        **DB_CONFIG
+    )
+
+
+def connect_db():
+    return get_connection_pool().get_connection()
+
+
+# =========================================================
 # DATABASE FUNCTIONS
 # =========================================================
 
-def connect_db():
-    return mysql.connector.connect(**DB_CONFIG)
-
-
 def run_query(query, values=(), fetch=False):
+
     conn = connect_db()
     cursor = conn.cursor(dictionary=True)
 
@@ -70,6 +89,7 @@ def run_query(query, values=(), fetch=False):
 
 
 def get_data(query, values=()):
+
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -91,6 +111,7 @@ def hash_password(password):
 
 
 def next_id(table, column):
+
     result = run_query(
         f"""
         SELECT COALESCE(MAX({column}), 0) + 1 AS next_id
@@ -147,9 +168,11 @@ if "user_id" not in st.session_state:
 
 
 def logout():
+
     st.session_state.logged_in = False
     st.session_state.role = ""
     st.session_state.user_id = None
+
     st.rerun()
 
 
@@ -161,8 +184,10 @@ try:
     create_login_tables()
 
 except Exception as e:
+
     st.error("Unable to connect to MySQL database.")
     st.error(str(e))
+
     st.stop()
 
 
@@ -225,11 +250,14 @@ if not st.session_state.logged_in:
         )
 
         if login_role == "Customer":
+
             login_id = st.text_input(
                 "Customer ID",
                 key="login_customer_id"
             )
+
         else:
+
             login_id = st.text_input(
                 "Owner Email",
                 key="login_owner_email"
@@ -248,6 +276,7 @@ if not st.session_state.logged_in:
         ):
 
             if not login_id or not login_password:
+
                 st.warning("Please enter all details.")
 
             else:
@@ -257,6 +286,7 @@ if not st.session_state.logged_in:
                 if login_role == "Customer":
 
                     try:
+
                         result = run_query(
                             """
                             SELECT Customer_ID
@@ -269,21 +299,27 @@ if not st.session_state.logged_in:
                         )
 
                         if result:
+
                             st.session_state.logged_in = True
                             st.session_state.role = "Customer"
                             st.session_state.user_id = int(login_id)
+
                             st.rerun()
+
                         else:
+
                             st.error(
                                 "Invalid Customer ID or Password."
                             )
 
                     except Exception as e:
+
                         st.error(str(e))
 
                 else:
 
                     try:
+
                         result = run_query(
                             """
                             SELECT Owner_ID
@@ -296,16 +332,21 @@ if not st.session_state.logged_in:
                         )
 
                         if result:
+
                             st.session_state.logged_in = True
                             st.session_state.role = "Owner"
                             st.session_state.user_id = result[0]["Owner_ID"]
+
                             st.rerun()
+
                         else:
+
                             st.error(
                                 "Invalid Owner Email or Password."
                             )
 
                     except Exception as e:
+
                         st.error(str(e))
 
     # =====================================================
@@ -360,11 +401,13 @@ if not st.session_state.logged_in:
                 or not customer_license
                 or not customer_password
             ):
+
                 st.warning("Please fill all required details.")
 
             else:
 
                 try:
+
                     customer_id = next_id(
                         "Customer",
                         "Customer_ID"
@@ -416,6 +459,7 @@ if not st.session_state.logged_in:
                     )
 
                 except Exception as e:
+
                     st.error(str(e))
 
     # =====================================================
@@ -455,20 +499,25 @@ if not st.session_state.logged_in:
         ):
 
             if not owner_name:
+
                 st.warning("Please enter Owner Name.")
 
             elif not owner_email:
+
                 st.warning("Please enter Owner Email.")
 
             elif not owner_password:
+
                 st.warning("Please create a Password.")
 
             elif owner_key != OWNER_REGISTRATION_KEY:
+
                 st.error("Invalid Owner Registration Key.")
 
             else:
 
                 try:
+
                     run_query(
                         """
                         INSERT INTO Owner_Login
@@ -493,6 +542,7 @@ if not st.session_state.logged_in:
                     )
 
                 except Exception as e:
+
                     st.error(str(e))
 
 
@@ -524,6 +574,7 @@ else:
             "Logout",
             key="customer_logout"
         ):
+
             logout()
 
         customer_id = st.session_state.user_id
@@ -538,8 +589,11 @@ else:
         )
 
         if not customer.empty:
+
             customer_name = customer.iloc[0]["Name"]
+
         else:
+
             customer_name = "Customer"
 
         st.title(f"👋 Welcome, {customer_name}")
@@ -566,6 +620,7 @@ else:
             available = 0
 
             if not vehicles.empty:
+
                 available = len(
                     vehicles[
                         vehicles["Status"] == "Available"
@@ -575,6 +630,7 @@ else:
             total_spent = 0
 
             if not bookings.empty:
+
                 total_spent = bookings["Total_Amount"].sum()
 
             c1, c2, c3 = st.columns(3)
@@ -635,6 +691,7 @@ else:
             ):
 
                 if return_date < pickup_date:
+
                     st.error(
                         "Return date cannot be before pickup date."
                     )
@@ -652,6 +709,7 @@ else:
                     )
 
                     if vehicle.empty:
+
                         st.error("Vehicle is not available.")
 
                     else:
@@ -776,6 +834,7 @@ else:
             "Logout",
             key="owner_logout"
         ):
+
             logout()
 
         st.title("👑 Owner Dashboard")
@@ -812,11 +871,13 @@ else:
             revenue = 0
 
             if not bookings.empty:
+
                 revenue = bookings["Total_Amount"].sum()
 
             maintenance_cost = 0
 
             if not maintenance.empty:
+
                 maintenance_cost = maintenance["Cost"].sum()
 
             c1, c2, c3, c4 = st.columns(4)
@@ -841,6 +902,7 @@ else:
                 st.subheader("Vehicle Status")
 
                 if not vehicles.empty:
+
                     st.bar_chart(
                         vehicles["Status"].value_counts()
                     )
@@ -850,6 +912,7 @@ else:
                 st.subheader("Vehicle Type")
 
                 if not vehicles.empty:
+
                     st.bar_chart(
                         vehicles["Vehicle_Type"].value_counts()
                     )
@@ -899,9 +962,15 @@ else:
                 key="owner_customer_license"
             )
 
-            if st.button("Add Customer", key="owner_add_customer"):
+            if st.button(
+                "Add Customer",
+                key="owner_add_customer"
+            ):
 
-                customer_id = next_id("Customer", "Customer_ID")
+                customer_id = next_id(
+                    "Customer",
+                    "Customer_ID"
+                )
 
                 run_query(
                     """
@@ -919,7 +988,9 @@ else:
                     )
                 )
 
-                st.success(f"Customer added. ID: {customer_id}")
+                st.success(
+                    f"Customer added. ID: {customer_id}"
+                )
 
         # =================================================
         # VEHICLES
@@ -946,8 +1017,15 @@ else:
                 key="vehicle_number"
             )
 
-            brand = st.text_input("Brand", key="vehicle_brand")
-            model = st.text_input("Model", key="vehicle_model")
+            brand = st.text_input(
+                "Brand",
+                key="vehicle_brand"
+            )
+
+            model = st.text_input(
+                "Model",
+                key="vehicle_model"
+            )
 
             vehicle_type = st.selectbox(
                 "Vehicle Type",
@@ -975,9 +1053,15 @@ else:
                 key="vehicle_branch_id"
             )
 
-            if st.button("Add Vehicle", key="add_vehicle_button"):
+            if st.button(
+                "Add Vehicle",
+                key="add_vehicle_button"
+            ):
 
-                vehicle_id = next_id("Vehicle", "Vehicle_ID")
+                vehicle_id = next_id(
+                    "Vehicle",
+                    "Vehicle_ID"
+                )
 
                 run_query(
                     """
@@ -997,7 +1081,9 @@ else:
                     )
                 )
 
-                st.success(f"Vehicle added. ID: {vehicle_id}")
+                st.success(
+                    f"Vehicle added. ID: {vehicle_id}"
+                )
 
         # =================================================
         # BOOKINGS
@@ -1039,7 +1125,9 @@ else:
 
             st.subheader("💳 Payment Management")
 
-            payments = get_data("SELECT * FROM Payment")
+            payments = get_data(
+                "SELECT * FROM Payment"
+            )
 
             st.dataframe(
                 payments,
@@ -1089,7 +1177,10 @@ else:
                 key="payment_transaction_id"
             )
 
-            if st.button("Add Payment", key="add_payment_button"):
+            if st.button(
+                "Add Payment",
+                key="add_payment_button"
+            ):
 
                 run_query(
                     """
@@ -1118,7 +1209,9 @@ else:
 
             st.subheader("🔄 Return Management")
 
-            returns = get_data("SELECT * FROM `Return`")
+            returns = get_data(
+                "SELECT * FROM `Return`"
+            )
 
             st.dataframe(
                 returns,
@@ -1161,7 +1254,10 @@ else:
                 key="return_remarks"
             )
 
-            if st.button("Record Return", key="record_return_button"):
+            if st.button(
+                "Record Return",
+                key="record_return_button"
+            ):
 
                 run_query(
                     """
@@ -1323,7 +1419,9 @@ else:
 
             st.subheader("👨‍💼 Employee Management")
 
-            employees = get_data("SELECT * FROM Employee")
+            employees = get_data(
+                "SELECT * FROM Employee"
+            )
 
             st.dataframe(
                 employees,
@@ -1360,9 +1458,15 @@ else:
                 key="employee_branch"
             )
 
-            if st.button("Add Employee", key="add_employee_button"):
+            if st.button(
+                "Add Employee",
+                key="add_employee_button"
+            ):
 
-                employee_id = next_id("Employee", "Employee_ID")
+                employee_id = next_id(
+                    "Employee",
+                    "Employee_ID"
+                )
 
                 run_query(
                     """
@@ -1380,7 +1484,9 @@ else:
                     )
                 )
 
-                st.success(f"Employee added. ID: {employee_id}")
+                st.success(
+                    f"Employee added. ID: {employee_id}"
+                )
 
         # =================================================
         # BRANCHES
@@ -1390,7 +1496,9 @@ else:
 
             st.subheader("🏢 Branch Management")
 
-            branches = get_data("SELECT * FROM Branch")
+            branches = get_data(
+                "SELECT * FROM Branch"
+            )
 
             st.dataframe(
                 branches,
@@ -1420,9 +1528,15 @@ else:
                 key="branch_manager"
             )
 
-            if st.button("Add Branch", key="add_branch_button"):
+            if st.button(
+                "Add Branch",
+                key="add_branch_button"
+            ):
 
-                branch_id = next_id("Branch", "Branch_ID")
+                branch_id = next_id(
+                    "Branch",
+                    "Branch_ID"
+                )
 
                 run_query(
                     """
@@ -1439,7 +1553,9 @@ else:
                     )
                 )
 
-                st.success(f"Branch added. ID: {branch_id}")
+                st.success(
+                    f"Branch added. ID: {branch_id}"
+                )
 
         # =================================================
         # REPORTS
