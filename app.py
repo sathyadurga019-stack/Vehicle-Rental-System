@@ -21,11 +21,12 @@ st.set_page_config(
 
 try:
     DB_CONFIG = {
-        "host": st.secrets["mysql"]["host"],
-        "user": st.secrets["mysql"]["user"],
-        "password": st.secrets["mysql"]["password"],
-        "database": st.secrets["mysql"]["database"]
-    }
+    "host": st.secrets["mysql"]["host"],
+    "port": int(st.secrets["mysql"]["port"]),
+    "user": st.secrets["mysql"]["user"],
+    "password": st.secrets["mysql"]["password"],
+    "database": st.secrets["mysql"]["database"]
+}
 except Exception:
     DB_CONFIG = {
         "host": os.getenv("DB_HOST", "localhost"),
